@@ -1,0 +1,4 @@
+{
+  "plugins": ["typescript", "react", "nextjs", "import"],
+  "ignorePatterns": ["convex/_generated"]
+}
