@@ -55,7 +55,7 @@ export default defineSchema({
     debateId: v.id("debates"),
     messages: v.array(
       v.object({
-        role: v.union(v.literal("user"), v.literal("assistant")),
+        role: v.union(v.literal("user"), v.literal("model")),
         content: v.string(),
       }),
     ),

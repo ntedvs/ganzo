@@ -2,7 +2,7 @@ import { v } from "convex/values"
 import { internalMutation, internalQuery } from "./_generated/server"
 
 const messageValidator = v.object({
-  role: v.union(v.literal("user"), v.literal("assistant")),
+  role: v.union(v.literal("user"), v.literal("model")),
   content: v.string(),
 })
 

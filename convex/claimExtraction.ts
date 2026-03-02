@@ -1,10 +1,10 @@
-import Anthropic from "@anthropic-ai/sdk"
+import { GoogleGenAI } from "@google/genai"
 import { v } from "convex/values"
 import { Data, Duration, Effect, Schema } from "effect"
 import { api, internal } from "./_generated/api"
 import { internalAction } from "./_generated/server"
 
-class AnthropicApiError extends Data.TaggedError("AnthropicApiError")<{
+class GeminiApiError extends Data.TaggedError("GeminiApiError")<{
   message: string
 }> {}
 
@@ -25,7 +25,7 @@ function parseClaim(line: string): ClaimData | null {
   }
 }
 
-type Message = { role: "user" | "assistant"; content: string }
+type Message = { role: "user" | "model"; content: string }
 
 const streamClaims = (
   apiKey: string,
@@ -35,32 +35,33 @@ const streamClaims = (
 ) =>
   Effect.tryPromise({
     try: async () => {
-      const client = new Anthropic({ apiKey })
-      const stream = client.messages.stream({
-        model: "claude-haiku-4-5",
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages,
+      const client = new GoogleGenAI({ apiKey })
+      const stream = await client.models.generateContentStream({
+        model: "gemini-2.5-flash",
+        config: {
+          maxOutputTokens: 4096,
+          systemInstruction: systemPrompt,
+        },
+        contents: messages.map((m) => ({
+          role: m.role,
+          parts: [{ text: m.content }],
+        })),
       })
 
       let buffer = ""
       let fullResponse = ""
 
-      for await (const event of stream) {
-        if (
-          event.type === "content_block_delta" &&
-          event.delta.type === "text_delta"
-        ) {
-          buffer += event.delta.text
-          fullResponse += event.delta.text
+      for await (const chunk of stream) {
+        const text = chunk.text ?? ""
+        buffer += text
+        fullResponse += text
 
-          let newlineIdx: number
-          while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
-            const line = buffer.slice(0, newlineIdx).trim()
-            buffer = buffer.slice(newlineIdx + 1)
-            const claim = line ? parseClaim(line) : null
-            if (claim) await onClaim(claim)
-          }
+        let newlineIdx: number
+        while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, newlineIdx).trim()
+          buffer = buffer.slice(newlineIdx + 1)
+          const claim = line ? parseClaim(line) : null
+          if (claim) await onClaim(claim)
         }
       }
 
@@ -70,7 +71,7 @@ const streamClaims = (
 
       return fullResponse
     },
-    catch: (e) => new AnthropicApiError({ message: String(e) }),
+    catch: (e) => new GeminiApiError({ message: String(e) }),
   }).pipe(Effect.timeout(Duration.seconds(60)))
 
 function buildSystemPrompt(speakerA: string, speakerB: string): string {
@@ -115,8 +116,8 @@ export const extract = internalAction({
     })
     if (!debate) return null
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set")
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) throw new Error("GEMINI_API_KEY not set")
 
     const speakerNames = [debate.speakerAName, debate.speakerBName]
     const systemPrompt = buildSystemPrompt(speakerNames[0], speakerNames[1])
@@ -158,7 +159,7 @@ export const extract = internalAction({
     if (result) {
       await ctx.runMutation(internal.extractionSessions.upsert, {
         debateId: args.debateId,
-        messages: [...messages, { role: "assistant", content: result }],
+        messages: [...messages, { role: "model", content: result }],
       })
     }
 
